@@ -1,60 +1,77 @@
 import streamlit as st
-import random
-import time
+import numpy as np
 
-st.set_page_config(page_title="Memory Game", layout="centered")
+# 1. 게임 초기화 (기본 퍼즐 구성)
+def init_game():
+    # 0은 빈칸을 의미합니다.
+    board = [
+        [5, 3, 0, 0, 7, 0, 0, 0, 0],
+        [6, 0, 0, 1, 9, 5, 0, 0, 0],
+        [0, 9, 8, 0, 0, 0, 0, 6, 0],
+        [8, 0, 0, 0, 6, 0, 0, 0, 3],
+        [4, 0, 0, 8, 0, 3, 0, 0, 1],
+        [7, 0, 0, 0, 2, 0, 0, 0, 6],
+        [0, 6, 0, 0, 0, 0, 2, 8, 0],
+        [0, 0, 0, 4, 1, 9, 0, 0, 5],
+        [0, 0, 0, 0, 8, 0, 0, 7, 9]
+    ]
+    st.session_state.board = np.array(board)
+    st.session_state.original = np.array(board) # 수정 불가능한 칸 확인용
 
-# 1. 초기 세션 상태 설정
-if 'sequence' not in st.session_state:
-    st.session_state.sequence = [random.randint(1, 9) for _ in range(3)] # 시작은 3개
-    st.session_state.user_input = []
-    st.session_state.showing = True
-    st.session_state.score = 0
+if 'board' not in st.session_state:
+    init_game()
 
-st.title("🧠 순서 기억하기 게임")
-st.write(f"**현재 점수: {st.session_state.score}**")
+st.title("🧩 스트림릿 스도쿠")
+st.write("빈칸(0)에 알맞은 숫자를 채워 넣으세요!")
 
-# 2. 숫자 보여주기 단계
-if st.session_state.showing:
-    placeholder = st.empty()
-    placeholder.info("숫자 순서를 잘 기억하세요!")
-    time.sleep(1)
+# 2. 스도쿠 판 그리기 (3x3 구역 강조)
+cols = st.columns(9)
+for r in range(9):
+    for c in range(9):
+        key = f"cell_{r}_{c}"
+        val = int(st.session_state.board[r, c])
+        
+        # 원래 숫자였던 칸은 수정 불가(Disabled) 처리
+        is_disabled = st.session_state.original[r, c] != 0
+        
+        with cols[c]:
+            new_val = st.number_input(
+                label=f"R{r}C{c}", 
+                min_value=0, 
+                max_value=9, 
+                value=val, 
+                key=key, 
+                label_visibility="collapsed",
+                disabled=is_disabled
+            )
+            st.session_state.board[r, c] = new_val
+
+# 3. 검증 로직 (중복 체크)
+def check_sudoku():
+    board = st.session_state.board
+    # 가로, 세로 체크
+    for i in range(9):
+        row = board[i, board[i,:] > 0]
+        col = board[board[:,i] > 0, i]
+        if len(set(row)) != len(row) or len(set(col)) != len(col):
+            return False, "행 또는 열에 중복된 숫자가 있습니다!"
     
-    for num in st.session_state.sequence:
-        placeholder.metric("숫자", num)
-        time.sleep(0.8)
-        placeholder.empty()
-        time.sleep(0.2)
-        
-    st.session_state.showing = False
+    # 0이 없으면 완성
+    if 0 in board:
+        return None, "진행 중..."
+    
+    return True, "축하합니다! 완벽하게 푸셨네요! 🎉"
+
+# 4. 결과 출력
+status, msg = check_sudoku()
+if status is True:
+    st.success(msg)
+    st.balloons()
+elif status is False:
+    st.error(msg)
+else:
+    st.info(msg)
+
+if st.button("게임 초기화"):
+    init_game()
     st.rerun()
-
-# 3. 사용자 입력 단계
-st.subheader("기억한 숫자를 순서대로 누르세요!")
-cols = st.columns(3)
-
-for i in range(1, 10):
-    if cols[(i-1)%3].button(f"{i}", key=f"btn_{i}", use_container_width=True):
-        st.session_state.user_input.append(i)
-        
-        # 정답 체크
-        current_step = len(st.session_state.user_input) - 1
-        if st.session_state.user_input[current_step] != st.session_state.sequence[current_step]:
-            st.error(f"틀렸습니다! 최종 점수: {st.session_state.score}")
-            if st.button("다시 도전"):
-                st.session_state.clear()
-                st.rerun()
-            st.stop()
-            
-        # 모든 단계를 맞췄을 때
-        if len(st.session_state.user_input) == len(st.session_state.sequence):
-            st.success("통과! 다음 단계로 이동합니다.")
-            st.session_state.score += 1
-            st.session_state.sequence.append(random.randint(1, 9))
-            st.session_state.user_input = []
-            st.session_state.showing = True
-            time.sleep(1)
-            st.rerun()
-
-# 진행 상황 표시
-st.write(f"진행도: {len(st.session_state.user_input)} / {len(st.session_state.sequence)}")
