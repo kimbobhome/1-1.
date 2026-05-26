@@ -1,36 +1,60 @@
 import streamlit as st
 import random
+import time
 
-# 앱 제목 설정
-st.title("🔢 숫자 맞추기 게임")
-st.write("1부터 100 사이의 숫자를 맞춰보세요!")
+st.set_page_config(page_title="Memory Game", layout="centered")
 
-# 1. 게임 초기화 (오류 방지를 위해 세션 상태 확인)
-if 'target_number' not in st.session_state:
-    st.session_state.target_number = random.randint(1, 100)
-    st.session_state.count = 0
-    st.session_state.game_over = False
+# 1. 초기 세션 상태 설정
+if 'sequence' not in st.session_state:
+    st.session_state.sequence = [random.randint(1, 9) for _ in range(3)] # 시작은 3개
+    st.session_state.user_input = []
+    st.session_state.showing = True
+    st.session_state.score = 0
 
-# 2. 사용자 입력 창
-user_guess = st.number_input("숫자를 입력하세요", min_value=1, max_value=100, step=1)
-submit_button = st.button("확인")
+st.title("🧠 순서 기억하기 게임")
+st.write(f"**현재 점수: {st.session_state.score}**")
 
-# 3. 게임 로직
-if submit_button and not st.session_state.game_over:
-    st.session_state.count += 1
+# 2. 숫자 보여주기 단계
+if st.session_state.showing:
+    placeholder = st.empty()
+    placeholder.info("숫자 순서를 잘 기억하세요!")
+    time.sleep(1)
     
-    if user_guess < st.session_state.target_number:
-        st.warning("더 큰 숫자입니다! ↑")
-    elif user_guess > st.session_state.target_number:
-        st.warning("더 작은 숫자입니다! ↓")
-    else:
-        st.success(f"정답입니다! 🎉 {st.session_state.count}번 만에 맞추셨네요.")
-        st.session_state.game_over = True
-        st.balloons() # 축하 효과
+    for num in st.session_state.sequence:
+        placeholder.metric("숫자", num)
+        time.sleep(0.8)
+        placeholder.empty()
+        time.sleep(0.2)
+        
+    st.session_state.showing = False
+    st.rerun()
 
-# 4. 다시 시작 버튼
-if st.session_state.game_over:
-    if st.button("게임 다시 시작"):
-        # 상태 초기화
-        del st.session_state.target_number
-        st.rerun()
+# 3. 사용자 입력 단계
+st.subheader("기억한 숫자를 순서대로 누르세요!")
+cols = st.columns(3)
+
+for i in range(1, 10):
+    if cols[(i-1)%3].button(f"{i}", key=f"btn_{i}", use_container_width=True):
+        st.session_state.user_input.append(i)
+        
+        # 정답 체크
+        current_step = len(st.session_state.user_input) - 1
+        if st.session_state.user_input[current_step] != st.session_state.sequence[current_step]:
+            st.error(f"틀렸습니다! 최종 점수: {st.session_state.score}")
+            if st.button("다시 도전"):
+                st.session_state.clear()
+                st.rerun()
+            st.stop()
+            
+        # 모든 단계를 맞췄을 때
+        if len(st.session_state.user_input) == len(st.session_state.sequence):
+            st.success("통과! 다음 단계로 이동합니다.")
+            st.session_state.score += 1
+            st.session_state.sequence.append(random.randint(1, 9))
+            st.session_state.user_input = []
+            st.session_state.showing = True
+            time.sleep(1)
+            st.rerun()
+
+# 진행 상황 표시
+st.write(f"진행도: {len(st.session_state.user_input)} / {len(st.session_state.sequence)}")
