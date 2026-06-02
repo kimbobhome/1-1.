@@ -1,77 +1,86 @@
 import streamlit as st
-import numpy as np
 
-# 1. 게임 초기화 (기본 퍼즐 구성)
-def init_game():
-    # 0은 빈칸을 의미합니다.
-    board = [
-        [5, 3, 0, 0, 7, 0, 0, 0, 0],
-        [6, 0, 0, 1, 9, 5, 0, 0, 0],
-        [0, 9, 8, 0, 0, 0, 0, 6, 0],
-        [8, 0, 0, 0, 6, 0, 0, 0, 3],
-        [4, 0, 0, 8, 0, 3, 0, 0, 1],
-        [7, 0, 0, 0, 2, 0, 0, 0, 6],
-        [0, 6, 0, 0, 0, 0, 2, 8, 0],
-        [0, 0, 0, 4, 1, 9, 0, 0, 5],
-        [0, 0, 0, 0, 8, 0, 0, 7, 9]
+# 페이지 설정
+st.set_page_config(page_title="스트림릿 보드게임", page_icon="🎮", layout="centered")
+
+st.title("🎮 스트림릿 틱택토 게임")
+st.write("친구와 번갈아가며 3개의 연속된 라인을 만들어보세요!")
+
+# 게임 상태(session_state) 초기화
+if "board" not in st.session_state:
+    st.session_state.board = [""] * 9
+if "turn" not in st.session_state:
+    st.session_state.turn = "❌"
+if "winner" not in st.session_state:
+    st.session_state.winner = None
+
+# 승리 조건 체크 함수
+def check_winner():
+    b = st.session_state.board
+    win_conditions = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8], # 가로
+        [0, 3, 6], [1, 4, 7], [2, 5, 8], # 세로
+        [0, 4, 8], [2, 4, 6]             # 대각선
     ]
-    st.session_state.board = np.array(board)
-    st.session_state.original = np.array(board) # 수정 불가능한 칸 확인용
+    for cond in win_conditions:
+        if b[cond[0]] == b[cond[1]] == b[cond[2]] != "":
+            return b[cond[0]]
+    if "" not in b:
+        return "Draw"
+    return None
 
-if 'board' not in st.session_state:
-    init_game()
+# 버튼 클릭 시 로직
+def handle_click(idx):
+    if st.session_state.board[idx] == "" and not st.session_state.winner:
+        st.session_state.board[idx] = st.session_state.turn
+        winner = check_winner()
+        if winner:
+            st.session_state.winner = winner
+        else:
+            # 턴 교체
+            st.session_state.turn = "⭕" if st.session_state.turn == "❌" else "❌"
 
-st.title("🧩 스트림릿 스도쿠")
-st.write("빈칸(0)에 알맞은 숫자를 채워 넣으세요!")
+# 게임 리셋 함수
+def reset_game():
+    st.session_state.board = [""] * 9
+    st.session_state.turn = "❌"
+    st.session_state.winner = None
 
-# 2. 스도쿠 판 그리기 (3x3 구역 강조)
-cols = st.columns(9)
-for r in range(9):
-    for c in range(9):
-        key = f"cell_{r}_{c}"
-        val = int(st.session_state.board[r, c])
-        
-        # 원래 숫자였던 칸은 수정 불가(Disabled) 처리
-        is_disabled = st.session_state.original[r, c] != 0
-        
-        with cols[c]:
-            new_val = st.number_input(
-                label=f"R{r}C{c}", 
-                min_value=0, 
-                max_value=9, 
-                value=val, 
-                key=key, 
-                label_visibility="collapsed",
-                disabled=is_disabled
-            )
-            st.session_state.board[r, c] = new_val
-
-# 3. 검증 로직 (중복 체크)
-def check_sudoku():
-    board = st.session_state.board
-    # 가로, 세로 체크
-    for i in range(9):
-        row = board[i, board[i,:] > 0]
-        col = board[board[:,i] > 0, i]
-        if len(set(row)) != len(row) or len(set(col)) != len(col):
-            return False, "행 또는 열에 중복된 숫자가 있습니다!"
-    
-    # 0이 없으면 완성
-    if 0 in board:
-        return None, "진행 중..."
-    
-    return True, "축하합니다! 완벽하게 푸셨네요! 🎉"
-
-# 4. 결과 출력
-status, msg = check_sudoku()
-if status is True:
-    st.success(msg)
-    st.balloons()
-elif status is False:
-    st.error(msg)
+# 현재 상태 메시지 출력
+if st.session_state.winner:
+    if st.session_state.winner == "Draw":
+        st.info("🤝 비겼습니다!")
+    else:
+        st.success(f"🎉 {st.session_state.winner} 승리!")
 else:
-    st.info(msg)
+    st.write(f"### 현재 턴: {st.session_state.turn}")
 
-if st.button("게임 초기화"):
-    init_game()
+# 3x3 보드 그리기 (CSS로 버튼 크기 키우기)
+st.markdown("""
+    <style>
+    div.stButton > button {
+        width: 100%;
+        height: 80px;
+        font-size: 24px !important;
+        font-weight: bold;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# 3x3 격자 레이아웃
+for i in range(3):
+    cols = st.columns(3)
+    for j in range(3):
+        idx = i * 3 + j
+        button_label = st.session_state.board[idx]
+        # 빈 칸이면 인덱스를 라벨로 숨기거나 공백 처리
+        display_label = button_label if button_label != "" else " "
+        
+        # 버튼 생성 및 클릭 이벤트 연결
+        cols[j].button(display_label, key=f"btn_{idx}", on_click=handle_click, args=(idx,))
+
+st.write("---")
+# 리셋 버튼
+if st.button("🔄 게임 다시 시작하기"):
+    reset_game()
     st.rerun()
