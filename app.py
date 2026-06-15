@@ -1,86 +1,103 @@
 import streamlit as st
+import streamlit.components.v1 as components
+import google.generativeai as genai
 
-# 페이지 설정
-st.set_page_config(page_title="스트림릿 보드게임", page_icon="🎮", layout="centered")
+# 1. 페이지 설정 (공부 자극 컨셉)
+st.set_page_config(page_title="빡공AI: 공부 주도기", page_icon="🔥", layout="centered")
+st.title("🔥 빡공AI : 공부 주도기")
+st.caption("⚠️ 경고: 공부 외 딴짓 질문을 하거나, 다른 탭으로 눈을 돌리면 즉시 강제 차단됩니다.")
 
-st.title("🎮 스트림릿 틱택토 게임")
-st.write("친구와 번갈아가며 3개의 연속된 라인을 만들어보세요!")
+# 2. API 키 설정
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+except KeyError:
+    st.error("⚠️ Streamlit Secrets 설정을 확인해주세요.")
+    st.stop()
 
-# 게임 상태(session_state) 초기화
-if "board" not in st.session_state:
-    st.session_state.board = [""] * 9
-if "turn" not in st.session_state:
-    st.session_state.turn = "❌"
-if "winner" not in st.session_state:
-    st.session_state.winner = None
+# 3. 차단 상태 및 대화 기록 세션 초기화
+if "is_banned" not in st.session_state:
+    st.session_state.is_banned = False
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# 승리 조건 체크 함수
-def check_winner():
-    b = st.session_state.board
-    win_conditions = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8], # 가로
-        [0, 3, 6], [1, 4, 7], [2, 5, 8], # 세로
-        [0, 4, 8], [2, 4, 6]             # 대각선
-    ]
-    for cond in win_conditions:
-        if b[cond[0]] == b[cond[1]] == b[cond[2]] != "":
-            return b[cond[0]]
-    if "" not in b:
-        return "Draw"
-    return None
+# [트랩 1] 다른 탭을 보다가 딱 걸려서 주소창에 ?cheated=true가 붙은 경우
+if "cheated" in st.query_params:
+    st.session_state.is_banned = True
 
-# 버튼 클릭 시 로직
-def handle_click(idx):
-    if st.session_state.board[idx] == "" and not st.session_state.winner:
-        st.session_state.board[idx] = st.session_state.turn
-        winner = check_winner()
-        if winner:
-            st.session_state.winner = winner
-        else:
-            # 턴 교체
-            st.session_state.turn = "⭕" if st.session_state.turn == "❌" else "❌"
+# 4. 차단된 사용자 화면 잠금 (열품타 스타일 경고)
+if st.session_state.is_banned:
+    st.error(
+        "🚨 [접속 강제 차단]\n\n"
+        "집중하지 않고 다른 화면(유튜브, 웹서핑 등)을 보았거나, "
+        "공부와 상관없는 딴짓 질문을 한 것이 감지되었습니다.\n\n"
+        "오늘 공부는 끝났나요? 다시 집중할 준비가 되면 창을 완전히 새로고침(F5)하고 들어오세요."
+    )
+    st.stop() # 이후 앱 기능 작동을 완전히 중단
 
-# 게임 리셋 함수
-def reset_game():
-    st.session_state.board = [""] * 9
-    st.session_state.turn = "❌"
-    st.session_state.winner = None
+# --- 💡 [웹 이탈 감지 시스템] ---
+# 사용자가 이 인터넷 탭을 벗어나는 순간(hidden), 주소창 뒤에 신호를 붙여 리로드 시킵니다.
+components.html(
+    """
+    <script>
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden) {
+            window.parent.location.search = "?cheated=true";
+        }
+    });
+    </script>
+    """,
+    height=0,
+)
+# --------------------------------
 
-# 현재 상태 메시지 출력
-if st.session_state.winner:
-    if st.session_state.winner == "Draw":
-        st.info("🤝 비겼습니다!")
-    else:
-        st.success(f"🎉 {st.session_state.winner} 승리!")
-else:
-    st.write(f"### 현재 턴: {st.session_state.turn}")
+# 기존 대화 기록 표시
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# 3x3 보드 그리기 (CSS로 버튼 크기 키우기)
-st.markdown("""
-    <style>
-    div.stButton > button {
-        width: 100%;
-        height: 80px;
-        font-size: 24px !important;
-        font-weight: bold;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# 5. 빡센 공부 멘토 페르소나 및 '딴짓 질문 검열' 지침
+system_instruction = (
+    "당신은 매우 엄격하고 냉철한 수험생 전용 공부 감독관(멘토)입니다.\n\n"
+    "사용자의 질문이 '학습 내용 질의응답(수학, 영어, 과학, 코딩 등)', '공부 계획 수립', '암기 팁', '동기부여' 등 "
+    "실제 공부 및 학업과 직간접적으로 관련된 내용이라면 아주 명쾌하고 똑 부러지게 가르쳐주거나 자극을 주세요.\n\n"
+    "★최우선 규칙★: 만약 사용자의 질문이 공부와 1도 상관없는 딴소리(예: 연애 상담, 유머, 게임 이야기, 심심하다는 징징거림, 연예인 잡담 등)라면, "
+    "다른 말은 절대 하지 말고 오직 정확히 딱 세 글자, [딴짓함] 이라고만 답변하세요."
+)
 
-# 3x3 격자 레이아웃
-for i in range(3):
-    cols = st.columns(3)
-    for j in range(3):
-        idx = i * 3 + j
-        button_label = st.session_state.board[idx]
-        # 빈 칸이면 인덱스를 라벨로 숨기거나 공백 처리
-        display_label = button_label if button_label != "" else " "
-        
-        # 버튼 생성 및 클릭 이벤트 연결
-        cols[j].button(display_label, key=f"btn_{idx}", on_click=handle_click, args=(idx,))
+# 6. 사용자 입력 및 AI 처리
+if user_input := st.chat_input("질문할 학습 내용이나 오늘 공부 계획을 입력하세요..."):
+    with st.chat_message("user"):
+        st.markdown(user_input)
+    st.session_state.messages.append({"role": "user", "content": user_input})
 
-st.write("---")
-# 리셋 버튼
-if st.button("🔄 게임 다시 시작하기"):
-    reset_game()
-    st.rerun()
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        try:
+            with st.spinner("감독관이 검사 중..."):
+                model = genai.GenerativeModel(
+                    model_name="gemini-2.5-flash-lite",
+                    system_instruction=system_instruction
+                )
+                
+                # 대화 컨텍스트 유지용 기록 변환
+                chat_history = []
+                for msg in st.session_state.messages[:-1]:
+                    role = "user" if msg["role"] == "user" else "model"
+                    chat_history.append({"role": role, "parts": [msg["content"]]})
+                
+                chat = model.start_chat(history=chat_history)
+                response = chat.send_message(user_input)
+                ai_response = response.text.strip()
+                
+                # [트랩 2] AI가 사용자의 딴짓 질문을 적발한 경우
+                if "[딴짓함]" in ai_response or ai_response == "딴짓함":
+                    st.session_state.is_banned = True
+                    st.rerun() # 즉시 상단의 차단 화면으로 튕겨버림
+                else:
+                    # 정상적인 공부 질문인 경우 답변 출력
+                    message_placeholder.markdown(ai_response)
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                    
+        except Exception as e:
+            message_placeholder.error(f"오류 발생: {str(e)}")
