@@ -1,12 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. 페이지 설정 (공부 자극 컨셉)
+# 1. 페이지 설정
 st.set_page_config(page_title="빡공AI: 공부 주도기", page_icon="🔥", layout="centered")
 st.title("🔥 빡공AI : 공부 주도기")
 st.caption("⚠️ 경고: 공부 외 딴짓 질문을 하면 즉시 강제 차단됩니다.")
 
-# 2. API 키 설정 (Streamlit Secrets 사용)
+# 2. API 키 설정
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
@@ -14,27 +14,27 @@ except KeyError:
     st.error("⚠️ Streamlit Secrets 설정을 확인해주세요. 'GEMINI_API_KEY'가 필요합니다.")
     st.stop()
 
-# 3. 차단 상태 및 대화 기록 세션 초기화
+# 3. 세션 상태 초기화
 if "is_banned" not in st.session_state:
     st.session_state.is_banned = False
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 4. 차단된 사용자 화면 즉시 잠금
+# 4. 차단된 사용자 화면 잠금
 if st.session_state.is_banned:
     st.error(
         "🚨 [접속 강제 차단]\n\n"
         "공부와 상관없는 딴짓 질문(잡담, 연애, 게임 등)을 한 것이 감지되었습니다.\n\n"
         "다시 집중할 준비가 되면 창을 완전히 새로고침(F5)하고 들어오세요."
     )
-    st.stop() # 이후 앱 기능을 완전히 중단시킵니다.
+    st.stop()
 
 # 기존 대화 기록 표시
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5. 엄격한 공부 멘토 페르소나 및 '딴짓 질문 검열' 시스템 지침
+# 5. 엄격한 공부 멘토 페르소나 지침
 system_instruction = (
     "당신은 매우 엄격하고 냉철한 수험생 전용 공부 감독관(멘토)입니다.\n\n"
     "사용자의 질문이 '학습 내용 질의응답(수학, 영어, 과학, 코딩 등)', '공부 계획 수립', '암기 팁', '학업 동기부여' 등 "
@@ -45,7 +45,7 @@ system_instruction = (
 
 # 6. 사용자 입력 및 AI 처리
 if user_input := st.chat_input("질문할 학습 내용이나 오늘 공부 계획을 입력하세요..."):
-    # 사용자 입력 화면 표시 및 기록 저장
+    # 사용자 입력 표시 및 저장
     with st.chat_message("user"):
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -53,9 +53,9 @@ if user_input := st.chat_input("질문할 학습 내용이나 오늘 공부 계�
     # AI 답변 생성 프로세스
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
+        
         try:
             with st.spinner("감독관이 검사 중..."):
-                # 모델 지정 (gemini-2.5-flash-lite)
                 model = genai.GenerativeModel(
                     model_name="gemini-2.5-flash-lite",
                     system_instruction=system_instruction
@@ -72,7 +72,14 @@ if user_input := st.chat_input("질문할 학습 내용이나 오늘 공부 계�
                 response = chat.send_message(user_input)
                 ai_response = response.text.strip()
                 
-                # 🛑 [딴짓 감지 트랩] AI가 사용자의 딴짓을 적발해 [딴짓함]을 보낸 경우
+                # 🛑 [딴짓 감지 트랩]
                 if "[딴짓함]" in ai_response or ai_response == "딴짓함":
                     st.session_state.is_banned = True
-                    st.rerun() # 즉시 상단으로 튕겨서
+                    st.rerun()
+                else:
+                    # 정상 답변 출력 및 기록
+                    message_placeholder.markdown(ai_response)
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                    
+        except Exception as e:
+            message_placeholder.error(f"🚨 시스템 오류가 발생했습니다: {str(e)}")
